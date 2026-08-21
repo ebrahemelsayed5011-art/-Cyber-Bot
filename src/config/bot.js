@@ -649,3 +649,71 @@ export function getRandomColor() {
 }
 
 export default botConfig;
+
+
+// --- كود أمر الإرسال الجماعي (Slash Command Broadcast) ---
+if (typeof client !== 'undefined' || typeof bot !== 'undefined') {
+    const currentBot = typeof client !== 'undefined' ? client : bot;
+
+    // 1. تسجيل الأمر تلقائياً عند تشغيل البوت
+    currentBot.on('ready', async () => {
+        try {
+            console.log('🔄 جاري تسجيل أمر البث الجماعي...');
+            // تسجيل الأمر لجميع السيرفرات المتواجد بها البوت
+            await currentBot.application.commands.create({
+                name: 'broadcast',
+                description: 'إرسال رسالة جماعية لجميع أعضاء السيرفر في الخاص دفعة واحدة',
+                options: [
+                    {
+                        name: 'رسالة',
+                        description: 'نص الرسالة المراد إرسالها',
+                        type: 3, // نوع النص (STRING)
+                        required: true,
+                    }
+                ]
+            });
+            console.log('✅ تم تسجيل أمر /broadcast بنجاح!');
+        } catch (error) {
+            console.error('❌ خطأ أثناء تسجيل الأمر:', error);
+        }
+    });
+
+    // 2. تشغيل الأمر وتنفيذه عند الاستدعاء
+    currentBot.on('interactionCreate', async (interaction) => {
+        if (!interaction.isChatInputCommand()) return;
+
+        if (interaction.commandName === 'broadcast') {
+            // التحقق من صلاحية الإدارة (Administrator)
+            if (!interaction.member.permissions.has('Administrator') && interaction.user.id !== interaction.guild.ownerId) {
+                return interaction.reply({ content: '❌ عذراً، هذا الأمر مخصص لإداريي السيرفر فقط!', ephemeral: true });
+            }
+
+            const messageText = interaction.options.getString('رسالة');
+            
+            // الرد الأولي لعدم انتهاء وقت الاستجابة (Defer Reply)
+            await interaction.reply({ content: '🚀 جاري بدء إرسال الرسالة لجميع أعضاء السيرفر في الخاص دفعة واحدة...', ephemeral: true });
+
+            try {
+                // جلب جميع أعضاء السيرفر لضمان القائمة كاملة
+                const members = await interaction.guild.members.fetch();
+                
+                // إنشاء مصفوفة وعود للإرسال بالتوازي وبأقصى سرعة
+                const sendPromises = members.map(async (member) => {
+                    if (member.user.bot) return;
+                    try {
+                        await member.send(`📢 **رسالة جماعية من سيرفر ${interaction.guild.name}:**\n\n${messageText}`);
+                    } catch (err) {
+                        // يتخطى العضو لو كان مغلق الخاص دون تعطيل الباقين
+                    }
+                });
+
+                // تشغيل كل عمليات الإرسال دفعة واحدة وبسرعة قصوى
+                await Promise.all(sendPromises);
+                await interaction.editReply({ content: `✅ تم الإرسال الجماعي بنجاح إلى جميع الأعضاء المتاحين!` });
+            } catch (error) {
+                await interaction.editReply({ content: '❌ حدث خطأ غير متوقع أثناء جلب الأعضاء أو الإرسال.' });
+                console.error(error);
+            }
+        }
+    });
+}
