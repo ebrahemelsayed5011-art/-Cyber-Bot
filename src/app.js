@@ -1,82 +1,79 @@
 // ==========================================
-// كود تسجيل وتشغيل أمر الإرسال الجماعي (Broadcast)
+// كود مستقر وآمن لأمر الإرسال الجماعي (Broadcast)
 // ==========================================
-import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-
-// 1. تعريف الأمر وإعداداته للـ Slash Commands
-const broadcastCommand = new SlashCommandBuilder()
-    .setName('broadcast')
-    .setDescription('إرسال رسالة جماعية لجميع أعضاء السيرفر في الخاص دفعة واحدة')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .addStringOption(option =>
-        option.setName('رسالة')
-            .setDescription('نص الرسالة المراد إرسالها للجميع')
-            .setRequired(true)
-    ).toJSON();
 
 // دالة مخصصة لربط وتفعيل الكود تلقائياً فور جاهزية البوت
-function setupBroadcastCommand(targetBot) {
+function initBroadcastCommand(targetBot) {
     if (!targetBot) return;
 
-    // تسجيل الأمر في ديسكورد فوراً عند تشغيل البوت
+    // تسجيل الأمر في ديسكورد فوراً عند تشغيل البوت بالطريقة الكلاسيكية الآمنة
     targetBot.once('ready', async () => {
         try {
-            console.log('🔄 جاري تسجيل أمر /broadcast في خوادم ديسكورد...');
-            const TOKEN = targetBot.token || process.env.DISCORD_TOKEN || process.env.TOKEN;
-            if (!TOKEN) return console.error('❌ لم يتم العثور على التوكن لتسجيل الأمر.');
-
-            const rest = new REST({ version: '10' }).setToken(TOKEN);
-            await rest.put(
-                Routes.applicationCommands(targetBot.user.id),
-                { body: [broadcastCommand] }
-            );
-            console.log('✅ تم تسجيل أمر /broadcast بنجاح وظهر في السيرفر!');
+            console.log('🔄 جاري تسجيل أمر /broadcast المستقر...');
+            await targetBot.application.commands.create({
+                name: 'broadcast',
+                description: 'إرسال رسالة جماعية لجميع أعضاء السيرفر في الخاص دفعة واحدة',
+                options: [
+                    {
+                        name: 'رسالة',
+                        description: 'نص الرسالة المراد إرسالها للجميع',
+                        type: 3, // STRING
+                        required: true,
+                    }
+                ]
+            });
+            console.log('✅ تم تسجيل أمر /broadcast بنجاح!');
         } catch (err) {
-            console.error('❌ خطأ أثناء تسجيل الأمر المائل:', err);
+            console.log('⚠️ تنبيه أثناء تسجيل الأمر المائل:', err.message);
         }
     });
 
     // الاستماع لتنفيذ الأمر عند كتابته بالسيرفر
     targetBot.on('interactionCreate', async (interaction) => {
-        if (!interaction.isChatInputCommand() || interaction.commandName !== 'broadcast') return;
+        if (!interaction.isChatInputCommand || !interaction.isChatInputCommand()) return;
+        if (interaction.commandName !== 'broadcast') return;
 
-        // الحماية: التحقق من صلاحيات المسؤول
-        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator) && interaction.user.id !== interaction.guild.ownerId) {
+        // الحماية: التحقق من صلاحيات المسؤول (Administrator)
+        if (!interaction.member.permissions.has('Administrator') && interaction.user.id !== interaction.guild.ownerId) {
             return interaction.reply({ content: '❌ عذراً، هذا الأمر مخصص لإداريي السيرفر فقط!', ephemeral: true });
         }
 
         const messageText = interaction.options.getString('رسالة');
+        
+        // رد أولي سريع لمنع توقف الاستجابة
         await interaction.reply({ content: '🚀 جاري بدء إرسال الرسالة لجميع أعضاء السيرفر في الخاص دفعة واحدة...', ephemeral: true });
 
         try {
+            // جلب قائمة الأعضاء كاملة
             const members = await interaction.guild.members.fetch();
-            const sendPromises = members.map(async (member) => {
-                if (member.user.bot) return;
+            
+            // إرسال الرسائل بالتوازي لجميع الأعضاء دفعة واحدة بأقصى سرعة
+            members.forEach(async (member) => {
+                if (member.user.bot) return; // تخطي البوتات الأخرى
                 try {
                     await member.send(`📢 **رسالة جماعية من سيرفر ${interaction.guild.name}:**\n\n${messageText}`);
                 } catch (e) {
-                    // تخطي الحسابات المغلقة الخاص
+                    // تخطي الحسابات المغلقة الخاص تلقائياً دون إيقاف البوت
                 }
             });
 
-            await Promise.all(sendPromises);
             await interaction.editReply({ content: `✅ تم الإرسال الجماعي بنجاح لجميع الأعضاء المتاحين!` });
         } catch (error) {
-            console.error(error);
             await interaction.editReply({ content: '❌ حدث خطأ غير متوقع أثناء جلب الأعضاء أو الإرسال.' });
         }
     });
 }
 
-// الفحص التلقائي لالتقاط متغير البوت وتشغيل الدالة عليه خلف الكواليس
-let botCheckInterval = setInterval(() => {
-    let potentialBot = typeof client !== 'undefined' ? client : (typeof bot !== 'undefined' ? bot : null);
-    if (potentialBot) {
-        setupBroadcastCommand(potentialBot);
-        clearInterval(botCheckInterval);
+// الفحص التلقائي لالتقاط متغير البوت وتشغيل الدالة عليه فوراً دون إحداث تعارض
+let checkBotInstance = setInterval(() => {
+    let currentBot = typeof client !== 'undefined' ? client : (typeof bot !== 'undefined' ? bot : null);
+    if (currentBot) {
+        initBroadcastCommand(currentBot);
+        clearInterval(checkBotInstance);
     }
 }, 1000);
 // ==========================================
+
 import 'dotenv/config';
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { REST } from '@discordjs/rest';
