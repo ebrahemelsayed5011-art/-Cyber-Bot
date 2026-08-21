@@ -1,1 +1,1 @@
-import './deploy.js';
+import './src/app.js';
