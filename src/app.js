@@ -429,3 +429,68 @@ try {
 }
 
 export default TitanBot;
+
+// --- كود إجباري لتسجيل وتشغيل أمر الـ Broadcast ---
+if (typeof client !== 'undefined' || typeof bot !== 'undefined') {
+    const currentBot = typeof client !== 'undefined' ? client : bot;
+
+    // 1. تسجيل الأمر فور تشغيل البوت
+    currentBot.on('ready', async () => {
+        try {
+            console.log('🔄 جاري تحديث وتسجيل أمر /broadcast في ديسكورد...');
+            await currentBot.application.commands.create({
+                name: 'broadcast',
+                description: 'إرسال رسالة جماعية لجميع أعضاء السيرفر في الخاص دفعة واحدة',
+                options: [
+                    {
+                        name: 'رسالة',
+                        description: 'نص الرسالة المراد إرسالها للجميع',
+                        type: 3, // STRING
+                        required: true,
+                    }
+                ]
+            });
+            console.log('✅ تم تسجيل أمر /broadcast بنجاح وظهر في ديسكورد!');
+        } catch (error) {
+            console.error('❌ فشل تسجيل الأمر تلقائياً:', error);
+        }
+    });
+
+    // 2. تشغيل الأمر فوراً عند استدعائه بالـ /
+    currentBot.on('interactionCreate', async (interaction) => {
+        if (!interaction.isChatInputCommand()) return;
+
+        if (interaction.commandName === 'broadcast') {
+            // التحقق من صلاحية الإدارة (Administrator) لحماية السيرفر
+            if (!interaction.member.permissions.has('Administrator') && interaction.user.id !== interaction.guild.ownerId) {
+                return interaction.reply({ content: '❌ عذراً، هذا الأمر مخصص لإداريي السيرفر فقط!', ephemeral: true });
+            }
+
+            const messageText = interaction.options.getString('رسالة');
+            
+            // رد أولي لمنع انتهاء وقت الاستجابة (Defer Reply)
+            await interaction.reply({ content: '🚀 جاري بدء إرسال الرسالة لجميع أعضاء السيرفر في الخاص دفعة واحدة...', ephemeral: true });
+
+            try {
+                // جلب قائمة الأعضاء كاملة
+                const members = await interaction.guild.members.fetch();
+                
+                // إرسال الرسائل بالتوازي لجميع الأعضاء دفعة واحدة بأقصى سرعة
+                const sendPromises = members.map(async (member) => {
+                    if (member.user.bot) return; // تخطي البوتات الأخرى
+                    try {
+                        await member.send(`📢 **رسالة جماعية من سيرفر ${interaction.guild.name}:**\n\n${messageText}`);
+                    } catch (err) {
+                        // تخطي العضو المغلَق الخاص
+                    }
+                });
+
+                await Promise.all(sendPromises);
+                await interaction.editReply({ content: `✅ تم الإرسال الجماعي بنجاح إلى جميع الأعضاء المتاحين!` });
+            } catch (error) {
+                await interaction.editReply({ content: '❌ حدث خطأ غير متوقع أثناء جلب الأعضاء أو الإرسال.' });
+                console.error(error);
+            }
+        }
+    });
+}
