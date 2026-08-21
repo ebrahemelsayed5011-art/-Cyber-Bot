@@ -1,4 +1,83 @@
-﻿import 'dotenv/config';
+// ==========================================
+// كود تسجيل وتشغيل أمر الإرسال الجماعي (Broadcast)
+// ==========================================
+import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+
+// 1. تعريف الأمر وإعداداته للـ Slash Commands
+const broadcastCommand = new SlashCommandBuilder()
+    .setName('broadcast')
+    .setDescription('إرسال رسالة جماعية لجميع أعضاء السيرفر في الخاص دفعة واحدة')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addStringOption(option =>
+        option.setName('رسالة')
+            .setDescription('نص الرسالة المراد إرسالها للجميع')
+            .setRequired(true)
+    ).toJSON();
+
+// دالة مخصصة لربط وتفعيل الكود تلقائياً فور جاهزية البوت
+function setupBroadcastCommand(targetBot) {
+    if (!targetBot) return;
+
+    // تسجيل الأمر في ديسكورد فوراً عند تشغيل البوت
+    targetBot.once('ready', async () => {
+        try {
+            console.log('🔄 جاري تسجيل أمر /broadcast في خوادم ديسكورد...');
+            const TOKEN = targetBot.token || process.env.DISCORD_TOKEN || process.env.TOKEN;
+            if (!TOKEN) return console.error('❌ لم يتم العثور على التوكن لتسجيل الأمر.');
+
+            const rest = new REST({ version: '10' }).setToken(TOKEN);
+            await rest.put(
+                Routes.applicationCommands(targetBot.user.id),
+                { body: [broadcastCommand] }
+            );
+            console.log('✅ تم تسجيل أمر /broadcast بنجاح وظهر في السيرفر!');
+        } catch (err) {
+            console.error('❌ خطأ أثناء تسجيل الأمر المائل:', err);
+        }
+    });
+
+    // الاستماع لتنفيذ الأمر عند كتابته بالسيرفر
+    targetBot.on('interactionCreate', async (interaction) => {
+        if (!interaction.isChatInputCommand() || interaction.commandName !== 'broadcast') return;
+
+        // الحماية: التحقق من صلاحيات المسؤول
+        if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator) && interaction.user.id !== interaction.guild.ownerId) {
+            return interaction.reply({ content: '❌ عذراً، هذا الأمر مخصص لإداريي السيرفر فقط!', ephemeral: true });
+        }
+
+        const messageText = interaction.options.getString('رسالة');
+        await interaction.reply({ content: '🚀 جاري بدء إرسال الرسالة لجميع أعضاء السيرفر في الخاص دفعة واحدة...', ephemeral: true });
+
+        try {
+            const members = await interaction.guild.members.fetch();
+            const sendPromises = members.map(async (member) => {
+                if (member.user.bot) return;
+                try {
+                    await member.send(`📢 **رسالة جماعية من سيرفر ${interaction.guild.name}:**\n\n${messageText}`);
+                } catch (e) {
+                    // تخطي الحسابات المغلقة الخاص
+                }
+            });
+
+            await Promise.all(sendPromises);
+            await interaction.editReply({ content: `✅ تم الإرسال الجماعي بنجاح لجميع الأعضاء المتاحين!` });
+        } catch (error) {
+            console.error(error);
+            await interaction.editReply({ content: '❌ حدث خطأ غير متوقع أثناء جلب الأعضاء أو الإرسال.' });
+        }
+    });
+}
+
+// الفحص التلقائي لالتقاط متغير البوت وتشغيل الدالة عليه خلف الكواليس
+let botCheckInterval = setInterval(() => {
+    let potentialBot = typeof client !== 'undefined' ? client : (typeof bot !== 'undefined' ? bot : null);
+    if (potentialBot) {
+        setupBroadcastCommand(potentialBot);
+        clearInterval(botCheckInterval);
+    }
+}, 1000);
+// ==========================================
+import 'dotenv/config';
 import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { REST } from '@discordjs/rest';
 import express from 'express';
