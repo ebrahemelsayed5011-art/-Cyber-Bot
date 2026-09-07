@@ -24,7 +24,7 @@ export const botConfig = {
     activities: [
       {
         name: "Prime", // required by Discord API, not shown in the client
-        state: "رقم 1  حرق كريديت,     // this is what people actually see
+        state: "رقم 1  حرق كريديت",     // this is what people actually see
         type: 0,               // Custom
       },
     ],
